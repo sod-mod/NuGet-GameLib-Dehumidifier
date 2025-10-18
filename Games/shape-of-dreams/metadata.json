@@ -1,9 +1,9 @@
 {
   "steam": {
-    "appId": 1966720,
+    "appId": 2444750,
     "gameDistDepots": [
       {
-        "depotId": 1966721,
+        "depotId": 2444751,
         "distributionName": "Windows",
         "isDefault": true
       }
@@ -18,12 +18,14 @@
     ],
     "assembliesToPublicise": [
       "Assembly-CSharp.dll",
-      "Assembly-CSharp-firstpass.dll"
+      "Dew.Core.dll",
+      "Dew.Contents.dll",
+      "Dew.External.dll"
     ],
     "isIL2Cpp": false
   },
   "nuget": {
-    "name": "LethalCompany.GameLibs.Steam",
-    "description": "Stripped and publicised game libraries for modding Lethal Company."
+    "name": "ShapeOfDreams.GameLibs.Steam",
+    "description": "Stripped and publicised game libraries for modding Shape of Dreams."
   }
 }
