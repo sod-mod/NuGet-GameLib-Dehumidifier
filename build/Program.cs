@@ -408,6 +408,12 @@ public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<Bui
 {
     private bool VersionOutdated(BuildContext context, GameVersionEntry versionEntry)
     {
+        // If GameVersion is empty, it's always outdated
+        if (string.IsNullOrEmpty(versionEntry.GameVersion))
+        {
+            return true;
+        }
+
         var nugetPackageMetadatasForEntry = context.GameMetadata.NuGetPackageNames
             .Select(name => context.DeployedPackageMetadata[name]);
 
