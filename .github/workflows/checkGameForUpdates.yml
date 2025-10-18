@@ -54,6 +54,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./build.sh --target CheckPackageVersionsUpToDate --game ${{ inputs.game }} --steam-username ${{ secrets.steam_username }}
+      
+      - name: Debug outputs
+        run: |
+          echo "buildIds output: '${{ steps.check-versions.outputs.outdated-version-buildIds }}'"
+          echo "buildIds length: ${{ length(steps.check-versions.outputs.outdated-version-buildIds) }}"
+          echo "buildIds is empty array: ${{ steps.check-versions.outputs.outdated-version-buildIds == '[]' }}"
+          echo "buildIds is empty string: ${{ steps.check-versions.outputs.outdated-version-buildIds == '' }}"
   
   dispatch-game-version-package-updates:
     needs: game-update-check

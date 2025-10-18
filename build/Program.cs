@@ -494,6 +494,8 @@ public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<Bui
         {
             Console.WriteLine($"::set-output name=outdated-version-buildIds::{outdatedBuildIdsJson}");
         }
+        
+        context.Log.Information($"Outdated build IDs: {outdatedBuildIdsJson}");
     }
 }
 
