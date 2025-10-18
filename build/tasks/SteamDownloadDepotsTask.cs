@@ -67,8 +67,21 @@ public class SteamDownloadDepotsTask : SteamCmdTaskBase
     public override async Task RunAsync(BuildContext context)
     {
         context.EnsureDirectoryExists(context.GameDirectory.Combine("steam"));
+        
+        // Get depot information from GameAppInfo instead of TargetVersion
+        var distributionDepots = context.GameMetadata.Steam.DistributionDepots.Values;
+        var depotVersions = distributionDepots.Select(depot => 
+        {
+            var depotInfo = context.GameAppInfo.Depots[depot.DepotId];
+            return new SteamGameDepotVersion
+            {
+                DepotId = depot.DepotId,
+                ManifestId = depotInfo.Manifests["public"].ManifestId
+            };
+        });
+        
         await Task.WhenAll(
-            context.TargetVersion.Depots.Values.Select(
+            depotVersions.Select(
                 depot => DownloadAndSymlinkDepot(context, depot)
             )
         );
