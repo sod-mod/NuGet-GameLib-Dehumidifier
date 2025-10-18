@@ -479,7 +479,17 @@ public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<Bui
 
     public override async Task RunAsync(BuildContext context)
     {
-        var outdatedBuildIds = GetOutdatedVersions(context).Select(version => version.BuildId);
+        context.Log.Information($"Total game versions: {context.GameVersions.Values.Count()}");
+        
+        var outdatedVersions = GetOutdatedVersions(context).ToList();
+        context.Log.Information($"Outdated versions count: {outdatedVersions.Count}");
+        
+        foreach (var version in outdatedVersions)
+        {
+            context.Log.Information($"Outdated version: BuildId={version.BuildId}, GameVersion='{version.GameVersion}'");
+        }
+        
+        var outdatedBuildIds = outdatedVersions.Select(version => version.BuildId);
         var outdatedBuildIdsJson = JsonSerializer.Serialize(outdatedBuildIds);
 
         var githubOutputFile = Environment.GetEnvironmentVariable("GITHUB_OUTPUT", EnvironmentVariableTarget.Process);
@@ -495,7 +505,7 @@ public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<Bui
             Console.WriteLine($"::set-output name=outdated-version-buildIds::{outdatedBuildIdsJson}");
         }
         
-        context.Log.Information($"Outdated build IDs: {outdatedBuildIdsJson}");
+        context.Log.Information($"Final buildIds JSON: {outdatedBuildIdsJson}");
     }
 }
 
