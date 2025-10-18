@@ -895,7 +895,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
                     {
                         var versionText = await File.ReadAllTextAsync(depotVersionFile);
                         var rawVersion = versionText.Trim();
-                        var gameVersion = ExtractVersionNumber(rawVersion);
+                        var gameVersion = ExtractVersionNumber(context, rawVersion);
                         context.Log.Information($"Found version.txt in depot {Path.GetFileName(depotDir)} with raw version: {rawVersion}, extracted: {gameVersion}");
                         return gameVersion;
                     }
@@ -911,7 +911,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         return "";
     }
 
-    private string ExtractVersionNumber(string rawVersion)
+    private string ExtractVersionNumber(BuildContext context, string rawVersion)
     {
         // Handle formats like "r.1.0.9.9_s" -> "1.0.9.9"
         // Remove common prefixes and suffixes
