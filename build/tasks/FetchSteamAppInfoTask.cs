@@ -17,7 +17,7 @@ namespace Build.Tasks;
 public class FetchSteamAppInfoTask : SteamCmdTaskBase
 {
     private static readonly Regex AnsiPattern = new Regex(@"\x1b\[[;\d]*[A-Za-z]");
-    
+
     protected static readonly KVSerializer VdfSerializer = KVSerializer.Create(KVSerializationFormat.KeyValues1Text);
 
     protected async Task<MemoryStream> ExtractAppInfo(StreamReader rawAppInfoStream)
@@ -25,7 +25,7 @@ public class FetchSteamAppInfoTask : SteamCmdTaskBase
         var writtenAppInfo = new MemoryStream();
         var appInfoWriter = new StreamWriter(writtenAppInfo);
         appInfoWriter.AutoFlush = true;
-        
+
         bool withinAppInfo = false;
         int depth = 0;
         string? currentLine;
@@ -48,16 +48,16 @@ public class FetchSteamAppInfoTask : SteamCmdTaskBase
                 depth += 1;
                 continue;
             }
-            
+
             if (withinAppInfo && currentLine.Trim().Equals("}"))
             {
                 depth -= 1;
                 if (depth == 0) break;
                 continue;
             }
-            
+
         }
-        
+
         var appInfoLength = writtenAppInfo.Length;
         await appInfoWriter.DisposeAsync();
         if (!withinAppInfo) throw new Exception("Couldn't find app info in SteamCMD output.");
@@ -66,7 +66,7 @@ public class FetchSteamAppInfoTask : SteamCmdTaskBase
         unreadAppInfo.SetLength(appInfoLength);
         return unreadAppInfo;
     }
-    
+
     protected async Task<SteamAppInfo> SteamCmdAppInfo(BuildContext context, int appId)
     {
         var (rawAppInfoStream, _) = await RawSteamCmd(
@@ -75,24 +75,24 @@ public class FetchSteamAppInfoTask : SteamCmdTaskBase
                 .AppendSwitch("+app_info_print", appId.ToString()),
             captureOutput: true
         );
-        
+
         using var rawAppInfoStreamManaged = rawAppInfoStream!;
         var appInfo = await ExtractAppInfo(rawAppInfoStreamManaged);
 
         var kvAppInfo = VdfSerializer.Deserialize(appInfo);
         return SteamAppInfo.FromKv(kvAppInfo);
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         context.Log.Information("Getting app info from SteamCMD...");
-        
+
         context.GameAppInfo = await SteamCmdAppInfo(context, context.GameMetadata.Steam.AppId);
     }
 }
 
 public class SteamAppInfo
-{   
+{
     public int AppId { get; set; }
     public string Name { get; set; }
     public Dictionary<int, SteamAppDepot> Depots { get; set; } = new();
@@ -173,7 +173,7 @@ public class SteamAppInfo
             appBranch.PopulateFromKvAppBranch(kvAppBranch);
             return appBranch;
         }
-        
+
         protected void PopulateFromKvAppBranch(KVObject kvAppBranch)
         {
             BranchName = kvAppBranch.Name;
@@ -219,7 +219,7 @@ public class SteamAppInfo
             }
         }
     }
-    
+
     protected void PopulateFromKvCommon(KVObject kvCommon)
     {
         foreach (var kvChild in kvCommon.Children)

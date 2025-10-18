@@ -41,7 +41,8 @@ public class Versioner(string repositoryRootPath)
     private VersionTagCandidate ComputeVersionTagCandidate()
     {
         _repository = new Repository(repositoryRootPath);
-        using (_repository) {
+        using (_repository)
+        {
             var versionTag = GetVersionTagCandidates()
                 .OrderDescending()
                 .First();
@@ -69,7 +70,8 @@ public class Versioner(string repositoryRootPath)
         var consideredShas = new HashSet<string>();
         var candidates = new LinkedList<VersionTagCandidate>();
 
-        while (toConsider.TryPop(out var commit)) {
+        while (toConsider.TryPop(out var commit))
+        {
             ConsiderCommit(commit);
         }
 
@@ -85,8 +87,10 @@ public class Versioner(string repositoryRootPath)
         void AppendVersionTagCandidates(Commit commit)
         {
             if (!versionTagsBySha.TryGetValue(commit.Sha, out var commitVersionTags)) return;
-            foreach (var versionTag in commitVersionTags) {
-                var candidate = new VersionTagCandidate {
+            foreach (var versionTag in commitVersionTags)
+            {
+                var candidate = new VersionTagCandidate
+                {
                     Commit = commit,
                     TagName = versionTag.Name,
                     Version = versionTag.Version,
@@ -99,14 +103,16 @@ public class Versioner(string repositoryRootPath)
         void PushParentsForConsideration(Commit commit)
         {
             var hasParent = false;
-            foreach (var parent in commit.Parents.Reverse()) {
+            foreach (var parent in commit.Parents.Reverse())
+            {
                 hasParent = true;
                 toConsider.Push(parent);
             }
 
             if (hasParent) return;
 
-            var candidate = new VersionTagCandidate {
+            var candidate = new VersionTagCandidate
+            {
                 Commit = commit,
                 TagName = "",
                 Version = new SemanticVersion(0, 0, 0),
@@ -122,7 +128,8 @@ public class Versioner(string repositoryRootPath)
 
         var versionTags = new LinkedList<(string Name, string Sha, SemanticVersion Version)>();
 
-        foreach (var tag in _repository.Tags) {
+        foreach (var tag in _repository.Tags)
+        {
             var name = tag.FriendlyName;
             if (!name.StartsWith(VersionTagPrefix)) continue;
             var nameWithoutPrefix = name.Substring(VersionTagPrefix.Length);

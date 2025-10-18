@@ -40,7 +40,7 @@ namespace Build;
 
 public static class Program
 {
-    [STAThread] 
+    [STAThread]
     public static int Main(string[] args)
     {
         return new CakeHost()
@@ -52,7 +52,7 @@ public static class Program
 public class BuildContext : FrostingContext
 {
     public const string DehumidifierVersionDiscriminatorPrefix = "ngd";
-    
+
     public string GameFolderName { get; }
     public int? GameBuildId { get; }
     public string SteamUsername { get; }
@@ -63,22 +63,24 @@ public class BuildContext : FrostingContext
     public GameVersionEntry TargetVersion => GameVersions[GameBuildId ?? throw new Exception("Build ID not provided.")];
 
     public Versioner Versioner { get; }
-    
+
     public Schema.GameMetadata GameMetadata { get; set; }
     public Schema.GameVersionMap GameVersions { get; set; }
     public SteamAppInfo GameAppInfo { get; set; }
     public Dictionary<string, Task> AssemblyProcessingTasks { get; set; }
-    
+
     private ReadOnlyDictionary<string, IList<IPackageSearchMetadata>>? _deployedPackageMetadata;
 
-    public IDictionary<string, IList<IPackageSearchMetadata>> DeployedPackageMetadata {
+    public IDictionary<string, IList<IPackageSearchMetadata>> DeployedPackageMetadata
+    {
         get => _deployedPackageMetadata ?? throw new InvalidOperationException();
         set => _deployedPackageMetadata = new ReadOnlyDictionary<string, IList<IPackageSearchMetadata>>(value);
     }
-    
+
     private ReadOnlyDictionary<PackageIdentity, DownloadResourceResult>? _nuGetPackageDownloadResults;
 
-    public IDictionary<PackageIdentity, DownloadResourceResult> NuGetPackageDownloadResults {
+    public IDictionary<PackageIdentity, DownloadResourceResult> NuGetPackageDownloadResults
+    {
         get => _nuGetPackageDownloadResults ?? throw new InvalidOperationException();
         set => _nuGetPackageDownloadResults = new ReadOnlyDictionary<PackageIdentity, DownloadResourceResult>(value);
     }
@@ -97,14 +99,14 @@ public class BuildContext : FrostingContext
         GameBuildId = context.Argument<int?>("build", null);
         SteamUsername = context.Argument<string>("steam-username", "");
         NugetApiKey = context.Argument<string>("nuget-api-key", "");
-        
+
         RootDirectory = context.Environment.WorkingDirectory.GetParent();
         Versioner = new(RootDirectory.FullPath);
     }
 
     public GitCommit InferredGitCommit(string message)
     {
-        var name  = this.GitConfigGet<string>(RootDirectory, "user.name");
+        var name = this.GitConfigGet<string>(RootDirectory, "user.name");
         var email = this.GitConfigGet<string>(RootDirectory, "user.email");
 
         return this.GitCommit(RootDirectory, name, email, message);
@@ -151,10 +153,10 @@ public sealed class PrepareTask : AsyncFrostingTaskBase<BuildContext>
     {
         if (context.GameDirectory.GetDirectoryName().Equals("Games"))
             throw new ArgumentException("No game folder name provided. Supply one with the '--game [folder name]' switch.");
-        
+
         context.Log.Information("Deserializing game metadata ...");
         await using FileStream gameDataStream = File.OpenRead(context.GameDirectory.CombineWithFilePath("metadata.json").FullPath);
-        
+
         return await JsonSerializer.DeserializeAsync<Schema.GameMetadata>(gameDataStream, GameMetadataSerializerOptions)
             ?? throw new ArgumentException("Game metadata could not be deserialized.");
     }
@@ -163,7 +165,7 @@ public sealed class PrepareTask : AsyncFrostingTaskBase<BuildContext>
     {
         Matcher versionFileMatcher = new();
         versionFileMatcher.AddInclude("*.json");
-        
+
         var versionsPath = context.GameDirectory.Combine("versions");
         var versionFileMatches = versionFileMatcher.Execute(
             new DirectoryInfoWrapper(new DirectoryInfo(versionsPath.FullPath))
@@ -175,7 +177,8 @@ public sealed class PrepareTask : AsyncFrostingTaskBase<BuildContext>
                 .Select(filePath => DeserializeGameVersion(context, filePath))
         );
         GameVersionMap gameVersionsMap = new();
-        foreach (var gameVersion in gameVersions) {
+        foreach (var gameVersion in gameVersions)
+        {
             gameVersionsMap[gameVersion.BuildId] = gameVersion;
         }
 
@@ -207,9 +210,10 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
         context.Log.Information("Serializing modified game metadata ...");
         await using FileStream gameDataStream = File.OpenWrite(context.GameDirectory.CombineWithFilePath("metadata.json").FullPath);
         await JsonSerializer.SerializeAsync(
-            gameDataStream, 
-            context.GameMetadata, 
-            new JsonSerializerOptions {
+            gameDataStream,
+            context.GameMetadata,
+            new JsonSerializerOptions
+            {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 WriteIndented = true,
             }
@@ -223,9 +227,10 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
         context.EnsureDirectoryExists(versionsPath.FullPath);
         await using FileStream versionDataStream = File.OpenWrite(versionsPath.CombineWithFilePath($"{gameVersionEntry.BuildId}.json").FullPath);
         await JsonSerializer.SerializeAsync(
-            versionDataStream, 
-            gameVersionEntry, 
-            new JsonSerializerOptions {
+            versionDataStream,
+            gameVersionEntry,
+            new JsonSerializerOptions
+            {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 WriteIndented = true,
             }
@@ -236,28 +241,51 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
     {
         var publicBranchInfo = context.GameAppInfo.Branches["public"];
         if (publicBranchInfo == null) throw new Exception("Current public branch info not found.");
-        
+
         var branchName = $"{context.GameDirectory.GetDirectoryName()}-build-{publicBranchInfo.BuildId}";
         await context.ProcessAsync(
             new CommandSettings
             {
                 ToolName = "git",
-                ToolExecutableNames = new []{ "git", "git.exe" },
+                ToolExecutableNames = new[] { "git", "git.exe" },
             },
             new ProcessArgumentBuilder()
                 .Append("fetch")
                 .Append("--prune")
                 .Append("origin")
         );
+
+        // Check if branch exists on origin and delete it (force)
         var branches = context.GitBranches(context.RootDirectory);
         if (branches.Any(branch => branch.FriendlyName == $"origin/{branchName}"))
         {
-            Console.WriteLine("Version entry branch already exists on 'origin', assuming pull request is already open.");
-            return;
+            Console.WriteLine("Version entry branch already exists on 'origin', deleting and recreating...");
+
+            // Delete remote branch
+            try
+            {
+                context.Command(
+                    new CommandSettings
+                    {
+                        ToolName = "git",
+                        ToolExecutableNames = new[] { "git", "git.exe" },
+                    },
+                    new ProcessArgumentBuilder()
+                        .Append("push")
+                        .Append("origin")
+                        .Append("--delete")
+                        .Append(branchName)
+                );
+                Console.WriteLine("Remote branch deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to delete remote branch: {ex.Message}");
+            }
         }
 
         context.Log.Information("Adding new (partial) version entry to game metadata ...");
-        
+
         var newVersionEntry = new GameVersionEntry
         {
             BuildId = publicBranchInfo.BuildId,
@@ -265,7 +293,8 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
             GameVersion = "", // Will be updated later by UpdateVersionFromDownloadTask
             Depots = context.GameMetadata.Steam.DistributionDepots.Select(depotPair => depotPair.Value.DepotId)
                 .Select(depotId => context.GameAppInfo.Depots[depotId])
-                .Select(depot => new SteamGameDepotVersion {
+                .Select(depot => new SteamGameDepotVersion
+                {
                     DepotId = depot.DepotId,
                     ManifestId = depot.Manifests["public"].ManifestId,
                 })
@@ -280,7 +309,7 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
             },
         };
         await SerializeGameVersion(context, newVersionEntry);
-        
+
         context.Log.Information("Opening version entry pull request ...");
         context.GitCreateBranch(context.RootDirectory, branchName, true);
         context.GitAdd(context.RootDirectory, context.GameDirectory.CombineWithFilePath("versions"));
@@ -289,7 +318,7 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
             new CommandSettings
             {
                 ToolName = "git",
-                ToolExecutableNames = new []{ "git", "git.exe" },
+                ToolExecutableNames = new[] { "git", "git.exe" },
             },
             new ProcessArgumentBuilder()
                 .Append("push")
@@ -309,8 +338,8 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
                 .Append("create")
                 .AppendSwitch("--title", $"\"[{context.GameDirectory.GetDirectoryName()}] Version entry - Build {publicBranchInfo.BuildId}\"")
                 .AppendSwitch(
-                    "--body", 
-                    $"\"Contains partially patched `metadata.json` for {context.GameAppInfo.Name} build {publicBranchInfo.BuildId}.\n" + 
+                    "--body",
+                    $"\"Contains partially patched `metadata.json` for {context.GameAppInfo.Name} build {publicBranchInfo.BuildId}.\n" +
                     $"Game version will be automatically populated from version.txt after download.\""
                 )
                 .AppendSwitch("--head", branchName)
@@ -334,7 +363,7 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
 
         context.Log.Information("Version entry PR created and merged automatically.");
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         var mostRecentKnownVersion = context.GameVersions.Latest();
@@ -344,24 +373,24 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
             await OpenVersionNumberPullRequest(context);
             return;
         }
-        
+
         var currentVersion = context.GameAppInfo.Branches["public"];
         // If the current version is the latest known version, check TimeUpdated matches and do nothing.
         if (currentVersion.BuildId == mostRecentKnownVersion.BuildId)
         {
-            if (currentVersion.TimeUpdated != mostRecentKnownVersion.TimeUpdated) 
+            if (currentVersion.TimeUpdated != mostRecentKnownVersion.TimeUpdated)
                 context.Log.Warning($"TimeUpdated for most recent known version is inaccurate - Should be {currentVersion.TimeUpdated}");
-            
+
             return;
         }
-        
+
         // If the current version is known, but not the latest known version, warn and do nothing.
         if (context.GameVersions.Values.Any(version => version.BuildId == currentVersion.BuildId))
         {
             context.Log.Warning("Current version is known, but is not latest?");
             return;
         }
-        
+
         // If the current version is unknown, open a pull request.
         await OpenVersionNumberPullRequest(context);
     }
@@ -383,11 +412,11 @@ public sealed class ListDeployedPackageVersionsTask : NuGetTaskBase
                 NullLogger.Instance, default))
             .ToArray();
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         _packageMetadataResource = await SourceRepository.GetResourceAsync<PackageMetadataResource>();
-        
+
         var deployedPackageMetadata = await Task.WhenAll(
             context.GameMetadata.NuGetPackageNames.Select(name => FetchNuGetPackageMetadata(context, name))
         );
@@ -428,29 +457,31 @@ public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<Bui
 
         bool HasDeployFromThisDehumidiferVersion(IEnumerable<IPackageSearchMetadata> packageVersions)
         {
-            try {
+            try
+            {
                 var latest = packageVersions
                     .OrderByDescending(version => version.Published)
                     .First();
                 return latest.Published >= context.Versioner.LastVersionChangeWhen;
             }
-            catch (InvalidOperationException) {
+            catch (InvalidOperationException)
+            {
                 return false;
             }
         }
     }
-    
+
     private IEnumerable<GameVersionEntry> GetOutdatedVersions(BuildContext context)
     {
         return context.GameVersions.Values
             .Where(version => VersionOutdated(context, version));
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         var outdatedBuildIds = GetOutdatedVersions(context).Select(version => version.BuildId);
         var outdatedBuildIdsJson = JsonSerializer.Serialize(outdatedBuildIds);
-        
+
         var githubOutputFile = Environment.GetEnvironmentVariable("GITHUB_OUTPUT", EnvironmentVariableTarget.Process);
         if (!string.IsNullOrWhiteSpace(githubOutputFile))
         {
@@ -522,7 +553,8 @@ public sealed class CacheDependencyAssemblyNamesTask : AsyncFrostingTaskBase<Bui
         FrameworkTarget target,
         PackageReaderBase packageReader,
         CancellationToken token
-    ) {
+    )
+    {
         var itemEnumerables = await Task.WhenAll(
             GetLibItems(),
             GetRefItems(),
@@ -534,7 +566,7 @@ public sealed class CacheDependencyAssemblyNamesTask : AsyncFrostingTaskBase<Bui
             .Where(fileName => Path.GetExtension(fileName) == ".dll");
 
         return itemFileNames.ToHashSet();
-        
+
         async Task<IEnumerable<string>> GetLibItems()
         {
             var libItemGroups = await packageReader.GetLibItemsAsync(token);
@@ -559,12 +591,13 @@ public sealed class CacheDependencyAssemblyNamesTask : AsyncFrostingTaskBase<Bui
             return buildItems.Items;
         }
     }
-    
+
     private async Task<HashSet<string>> DependencyAssemblyNamesForTfm(
         BuildContext context,
         FrameworkTarget target,
         CancellationToken token
-    ) {
+    )
+    {
         var packageReaders = target.NuGetDependencies
             .Select(dependency => dependency.ToPackageIdentity())
             .Select(identity => context.NuGetPackageDownloadResults[identity].PackageReader);
@@ -577,7 +610,7 @@ public sealed class CacheDependencyAssemblyNamesTask : AsyncFrostingTaskBase<Bui
             .SelectMany(x => x)
             .ToHashSet();
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         var perFrameworkDependencyAssemblies = await Task.WhenAll(
@@ -607,13 +640,13 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
     private Dictionary<int, DirectoryPath> DepotDataDirectories { get; } = new();
     private readonly object _processingTasksLock = new();
 
-    private AssemblyPublicizerOptions StripAndPublicise { get; }= new()
+    private AssemblyPublicizerOptions StripAndPublicise { get; } = new()
     {
         Target = PublicizeTarget.All,
         Strip = true,
         IncludeOriginalAttributesAttribute = true,
     };
-        
+
     private AssemblyPublicizerOptions StripOnly { get; } = new()
     {
         Target = PublicizeTarget.None,
@@ -639,7 +672,7 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
         {
             return depotDirectory.Combine($"{Path.GetFileNameWithoutExtension(windowsExe)}_Data");
         }
-        
+
         var linuxExe = Directory
             .EnumerateFiles(depotDirectory.FullPath, "*.x86_64")
             .FirstOrDefault(filePath => !Path.GetFileName(filePath).StartsWith("UnityCrashHandler"));
@@ -647,7 +680,7 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
         {
             return depotDirectory.Combine($"{Path.GetFileNameWithoutExtension(linuxExe)}_Data");
         }
-        
+
         var macOsApp = Directory.EnumerateFiles(depotDirectory.FullPath, "*.app").FirstOrDefault();
         if (macOsApp != null)
         {
@@ -693,7 +726,7 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
             {
                 context.AssemblyProcessingTasks[filePath.FullPath] = Task.CompletedTask;
             }
-            
+
             processingHasStarted = context.AssemblyProcessingTasks.TryGetValue(filePath.FullPath, out processingCompleted);
 
             if (!processingHasStarted)
@@ -710,8 +743,8 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
             var options = shouldPublicise ? StripAndPublicise : StripOnly;
             context.Log.Information($"Stripping {(shouldPublicise ? "and publicising " : "")}{depot.DepotId}/{fileName}...");
             AssemblyPublicizer.Publicize(
-                filePath.FullPath, 
-                processedFilePath.FullPath, 
+                filePath.FullPath,
+                processedFilePath.FullPath,
                 options
             );
             processingCompletedSource!.SetResult();
@@ -728,19 +761,19 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
     {
         Task ProcessAndCopyAssembly(FilePatternMatch path) => ProcessAndCopyAssemblyForDepotTarget(context, depot, tfm, path);
         context.EnsureDirectoryExists(DepotTargetNupkgRefsDirectory(context, depot, tfm).FullPath);
-        
+
         await Task.WhenAll(
             DepotAssemblies[depot.DepotId]
                 .Select(ProcessAndCopyAssembly)
         );
     }
-    
+
     private async Task CopyAssembliesForDepot(BuildContext context, SteamGameDistributionDepot depot)
     {
         DepotAssemblies[depot.DepotId] = AssemblyMatcher.Execute(
             new DirectoryInfoWrapper(new DirectoryInfo(ManagedDirectory(context, depot.DepotId).FullPath))
         ).Files.ToArray();
-        
+
         Task CopyAssembliesForTarget(NuGetFramework tfm) => CopyAssembliesForDepotTarget(context, depot, tfm);
         await Task.WhenAll(
             context.TargetVersion.FrameworkTargets
@@ -748,23 +781,23 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
                 .Select(CopyAssembliesForTarget)
         );
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         context.AssemblyProcessingTasks = new();
-        
+
         AssemblyMatcher.AddInclude("*.dll");
         AssemblyMatcher.AddExcludePatterns(context.GameMetadata.ProcessSettings.ExcludeAssemblies);
-        
+
         PublicizeMatcher.AddIncludePatterns(context.GameMetadata.ProcessSettings.AssembliesToPublicise);
-        
+
         await Task.WhenAll(
             context.GameMetadata.Steam.DistributionDepots.Values.Select(
                 depot => CopyAssembliesForDepot(context, depot)
             )
         );
     }
-} 
+}
 
 [TaskName("MakePackages")]
 [IsDependentOn(typeof(ListDeployedPackageVersionsTask))]
@@ -799,9 +832,9 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
         {
             return 0;
         }
-        
+
     }
-    
+
     public async Task MakeDepotPackage(BuildContext context, SteamGameDistributionDepot depot)
     {
         var id = $"{context.GameMetadata.NuGet.Name}{depot.PackageSuffix}";
@@ -814,8 +847,8 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
         {
             Id = id,
             Version = new NuGetVersion($"{context.TargetVersion.GameVersion}-{BuildContext.DehumidifierVersionDiscriminatorPrefix}.{nextRevision}"),
-            Authors =  context.GameMetadata.NuGet.Authors ?? ["lordfirespeed"],
-            Description = context.GameMetadata.NuGet.Description 
+            Authors = context.GameMetadata.NuGet.Authors ?? ["lordfirespeed"],
+            Description = context.GameMetadata.NuGet.Description
                           + "\n\nGenerated and managed by GameLib Dehumidifier.",
             DependencyGroups = context.TargetVersion.FrameworkTargets.Select(
                 target => new PackageDependencyGroup(
@@ -827,7 +860,7 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
                 )
             )
         };
-        
+
         metadata.SetProjectUrl("https://github.com/Lordfirespeed/NuGet-GameLib-Dehumidifier");
 
         ManifestFile[] files = [
@@ -847,7 +880,7 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
         await using FileStream stream = File.Open(DepotNupkgPackedFilePath(context, depot).FullPath, FileMode.OpenOrCreate);
         builder.Save(stream);
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         Func<SteamGameDistributionDepot, Task> makeDepotPackage = depot => MakeDepotPackage(context, depot);
@@ -906,7 +939,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
                 }
             }
         }
-        
+
         context.Log.Warning("version.txt not found in game root or any depot directory");
         return "";
     }
@@ -916,19 +949,19 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         // Handle formats like "r.1.0.9.9_s" -> "1.0.9.9"
         // Remove common prefixes and suffixes
         var version = rawVersion.Trim();
-        
+
         // Remove "r." prefix if present
         if (version.StartsWith("r."))
         {
             version = version.Substring(2);
         }
-        
+
         // Remove "_s" suffix if present
         if (version.EndsWith("_s"))
         {
             version = version.Substring(0, version.Length - 2);
         }
-        
+
         // Remove other common suffixes like "_beta", "_alpha", etc.
         var suffixes = new[] { "_beta", "_alpha", "_dev", "_test", "_rc", "_pre" };
         foreach (var suffix in suffixes)
@@ -939,13 +972,13 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
                 break;
             }
         }
-        
+
         // Validate that it looks like a version number (contains dots and numbers)
         if (version.Contains('.') && version.Any(char.IsDigit))
         {
             return version;
         }
-        
+
         // If no valid version found, return the original string
         context.Log.Warning($"Could not extract valid version from: {rawVersion}");
         return rawVersion;
@@ -954,7 +987,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
     private async Task UpdateVersionEntry(BuildContext context, string gameVersion)
     {
         var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{context.TargetVersion.BuildId}.json");
-        
+
         if (!File.Exists(versionFilePath.FullPath))
         {
             context.Log.Error($"Version file not found: {versionFilePath.FullPath}");
@@ -991,16 +1024,16 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
     private async Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
     {
         var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{context.TargetVersion.BuildId}";
-        
+
         // Create branch
         context.GitCreateBranch(context.RootDirectory, branchName, true);
-        
+
         // Add changes
         context.GitAdd(context.RootDirectory, context.GameDirectory.CombineWithFilePath("versions"));
-        
+
         // Commit changes
         context.InferredGitCommit($"Update game version to {gameVersion} for build {context.TargetVersion.BuildId}");
-        
+
         // Push branch
         context.Command(
             new CommandSettings
@@ -1027,8 +1060,8 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
                 .Append("create")
                 .AppendSwitch("--title", $"\"[{context.GameDirectory.GetDirectoryName()}] Update game version to {gameVersion} - Build {context.TargetVersion.BuildId}\"")
                 .AppendSwitch(
-                    "--body", 
-                    $"\"Updated game version to {gameVersion} for {context.GameAppInfo.Name} build {context.TargetVersion.BuildId}.\n" + 
+                    "--body",
+                    $"\"Updated game version to {gameVersion} for {context.GameAppInfo.Name} build {context.TargetVersion.BuildId}.\n" +
                     $"Version was automatically extracted from version.txt file.\""
                 )
                 .AppendSwitch("--head", branchName)
@@ -1056,7 +1089,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
     public override async Task RunAsync(BuildContext context)
     {
         var gameVersion = await ReadVersionFromFile(context);
-        
+
         if (string.IsNullOrEmpty(gameVersion))
         {
             context.Log.Warning("No version found, skipping update");

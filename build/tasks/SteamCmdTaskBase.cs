@@ -11,9 +11,9 @@ namespace Build.Tasks;
 public abstract class SteamCmdTaskBase : AsyncFrostingTaskBase<BuildContext>
 {
     public delegate ProcessArgumentBuilder BuildArguments(ProcessArgumentBuilder builder);
-    
+
     protected async Task<Tuple<StreamReader?, StreamReader?>> RawSteamCmd(
-        BuildContext context, 
+        BuildContext context,
         BuildArguments buildArguments,
         bool captureOutput = false,
         bool captureError = false

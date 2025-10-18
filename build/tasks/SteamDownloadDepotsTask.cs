@@ -19,8 +19,8 @@ public class SteamDownloadDepotsTask : SteamCmdTaskBase
     private static readonly Regex AnsiPattern = new Regex(@"\x1b\[[;\d]*[A-Za-z]");
 
     private static readonly Regex DownloadCompleteRegex = new(
-        """Depot download complete : "(.*)" \(manifest \d+\)""", 
-        RegexOptions.Compiled | 
+        """Depot download complete : "(.*)" \(manifest \d+\)""",
+        RegexOptions.Compiled |
         RegexOptions.IgnoreCase
     );
 
@@ -32,7 +32,7 @@ public class SteamDownloadDepotsTask : SteamCmdTaskBase
             context.Log.Information($"Depot {depot.DepotId} is already downloaded, skipping download");
             return;
         }
-        
+
         var (output, _) = await RawSteamCmd(
             context,
             args => args
@@ -54,16 +54,16 @@ public class SteamDownloadDepotsTask : SteamCmdTaskBase
             if (downloadCompleteMatch.Success) break;
         }
 
-        if (downloadCompleteMatch is not { Success: true }) 
+        if (downloadCompleteMatch is not { Success: true })
             throw new Exception("Couldn't find 'download complete' message in SteamCMD output.");
         var downloadedToPath = new FilePath(downloadCompleteMatch!.Groups[1].Value);
-        
+
         Directory.CreateSymbolicLink(
             destinationPath.FullPath,
             downloadedToPath.FullPath
         );
     }
-    
+
     public override async Task RunAsync(BuildContext context)
     {
         context.EnsureDirectoryExists(context.GameDirectory.Combine("steam"));

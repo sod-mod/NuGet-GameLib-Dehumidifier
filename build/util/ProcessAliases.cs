@@ -13,7 +13,7 @@ namespace Build.util;
 public static class ProcessAliases
 {
     private static SemaphoreSlim processRunLock = new SemaphoreSlim(1, 1);
-    
+
     private static FilePath? ResolveToolPath(ICakeContext context, CommandSettings settings)
     {
         var presetToolPath = settings.ToolPath;
@@ -21,7 +21,7 @@ public static class ProcessAliases
         {
             return presetToolPath.MakeAbsolute(context.Environment);
         }
-        
+
         var resolvedToolPath = context.Tools.Resolve(settings.ToolExecutableNames);
         return resolvedToolPath;
     }
@@ -32,8 +32,9 @@ public static class ProcessAliases
         ProcessArgumentBuilder? arguments = null,
         bool captureOutput = false,
         bool captureError = false,
-        string? sendToStdin = null 
-    ) {
+        string? sendToStdin = null
+    )
+    {
         await processRunLock.WaitAsync();
         try
         {
@@ -58,8 +59,9 @@ public static class ProcessAliases
         ProcessArgumentBuilder? arguments = null,
         bool captureOutput = false,
         bool captureError = false,
-        string? sendToStdin = null 
-    ) {
+        string? sendToStdin = null
+    )
+    {
         var resolvedToolPath = ResolveToolPath(context, settings);
         context.Log.Debug($"Resolved {settings.ToolName} to {resolvedToolPath}");
         if (resolvedToolPath == null) throw new Exception($"Couldn't resolve path for '{settings.ToolName}'");
@@ -76,7 +78,7 @@ public static class ProcessAliases
             WorkingDirectory = context.Environment.WorkingDirectory.FullPath,
             CreateNoWindow = true,
         };
-        
+
         context.Log.Information($"{settings.ToolName ?? resolvedToolPath.GetFilenameWithoutExtension()} {arguments?.RenderSafe() ?? ""}");
         using var process = new Process();
         process.StartInfo = startInfo;
@@ -98,9 +100,9 @@ public static class ProcessAliases
             context.Log.Error(args.Data);
             await errorWriter.WriteLineAsync(args.Data);
         };
-        
+
         process.Start();
-        
+
         if (captureOutput) process.BeginOutputReadLine();
         if (captureError) process.BeginErrorReadLine();
 
@@ -117,7 +119,7 @@ public static class ProcessAliases
 
         if (process.ExitCode != 0)
             throw new Exception($"{settings.ToolName} returned exit code " + process.ExitCode + ".");
-        
+
         output.Position = 0;
         error.Position = 0;
 
