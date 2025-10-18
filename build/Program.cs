@@ -446,9 +446,24 @@ public sealed class CheckPackageBuildIdUpToDateTask : AsyncFrostingTaskBase<Buil
         var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{currentBuildId}.json");
         var isAlreadyProcessed = File.Exists(versionFilePath.FullPath);
         
+        context.Log.Information($"Version file path: {versionFilePath.FullPath}");
         context.Log.Information($"Version file exists: {isAlreadyProcessed}");
         
-        var outdatedBuildIds = isAlreadyProcessed ? new List<long>() : new List<long> { currentBuildId };
+        // List all files in versions directory for debugging
+        var versionsDir = context.GameDirectory.Combine("versions");
+        if (Directory.Exists(versionsDir.FullPath))
+        {
+            var files = Directory.GetFiles(versionsDir.FullPath, "*.json");
+            context.Log.Information($"Files in versions directory: {string.Join(", ", files)}");
+        }
+        else
+        {
+            context.Log.Information("Versions directory does not exist");
+        }
+        
+        // Always include the current build ID if it needs processing
+        // (either not processed yet, or processed but needs version update)
+        var outdatedBuildIds = new List<long> { currentBuildId };
         var outdatedBuildIdsJson = JsonSerializer.Serialize(outdatedBuildIds);
 
         var githubOutputFile = Environment.GetEnvironmentVariable("GITHUB_OUTPUT", EnvironmentVariableTarget.Process);
