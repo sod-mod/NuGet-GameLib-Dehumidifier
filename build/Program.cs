@@ -257,11 +257,12 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
         }
 
         context.Log.Information("Adding new (partial) version entry to game metadata ...");
+        
         var newVersionEntry = new GameVersionEntry
         {
             BuildId = publicBranchInfo.BuildId,
             TimeUpdated = publicBranchInfo.TimeUpdated,
-            GameVersion = "",
+            GameVersion = "", // Will be updated later by UpdateVersionFromDownloadTask
             Depots = context.GameMetadata.Steam.DistributionDepots.Select(depotPair => depotPair.Value.DepotId)
                 .Select(depotId => context.GameAppInfo.Depots[depotId])
                 .Select(depot => new SteamGameDepotVersion {
@@ -310,14 +311,28 @@ public sealed class HandleUnknownSteamBuildTask : AsyncFrostingTaskBase<BuildCon
                 .AppendSwitch(
                     "--body", 
                     $"\"Contains partially patched `metadata.json` for {context.GameAppInfo.Name} build {publicBranchInfo.BuildId}.\n" + 
-                    $"Game version number must be populated before merging.\n" + 
-                    $"Game version number can likely be inferred from " + 
-                    $"[Patchnotes for {context.GameAppInfo.Name} - SteamDB](https://steamdb.info/app/{context.GameMetadata.Steam.AppId}/patchnotes/)\""
+                    $"Game version will be automatically populated from version.txt after download.\""
                 )
                 .AppendSwitch("--head", branchName)
         );
 
-        context.Log.Warning("Version number for new build is unknown. Opened pull request to resolve.");
+        // Auto-merge the PR
+        context.Log.Information("Auto-merging version entry PR...");
+        context.Command(
+            new CommandSettings
+            {
+                ToolName = "gh",
+                ToolExecutableNames = new[] { "gh", "gh.exe" },
+            },
+            new ProcessArgumentBuilder()
+                .Append("pr")
+                .Append("merge")
+                .Append(branchName)
+                .Append("--merge")
+                .Append("--delete-branch")
+        );
+
+        context.Log.Information("Version entry PR created and merged automatically.");
     }
     
     public override async Task RunAsync(BuildContext context)
@@ -851,6 +866,199 @@ public sealed class PushNuGetTask : FrostingTaskBase<BuildContext>
         };
         foreach (var pkg in context.GetFiles(nugetPath.Combine("*.nupkg").FullPath))
             context.DotNetNuGetPush(pkg, settings);
+    }
+}
+
+[TaskName("UpdateVersionFromDownload")]
+[IsDependentOn(typeof(SteamDownloadDepotsTask))]
+public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildContext>
+{
+    private async Task<string> ReadVersionFromFile(BuildContext context)
+    {
+        // Try to find version.txt in downloaded depot directories
+        var steamDir = context.GameDirectory.Combine("steam");
+        if (Directory.Exists(steamDir.FullPath))
+        {
+            var depotDirs = Directory.GetDirectories(steamDir.FullPath, "depot_*");
+            foreach (var depotDir in depotDirs)
+            {
+                var depotVersionFile = Path.Combine(depotDir, "version.txt");
+                if (File.Exists(depotVersionFile))
+                {
+                    try
+                    {
+                        var versionText = await File.ReadAllTextAsync(depotVersionFile);
+                        var rawVersion = versionText.Trim();
+                        var gameVersion = ExtractVersionNumber(rawVersion);
+                        context.Log.Information($"Found version.txt in depot {Path.GetFileName(depotDir)} with raw version: {rawVersion}, extracted: {gameVersion}");
+                        return gameVersion;
+                    }
+                    catch (Exception ex)
+                    {
+                        context.Log.Warning($"Failed to read version.txt from depot {Path.GetFileName(depotDir)}: {ex.Message}");
+                    }
+                }
+            }
+        }
+        
+        context.Log.Warning("version.txt not found in game root or any depot directory");
+        return "";
+    }
+
+    private string ExtractVersionNumber(string rawVersion)
+    {
+        // Handle formats like "r.1.0.9.9_s" -> "1.0.9.9"
+        // Remove common prefixes and suffixes
+        var version = rawVersion.Trim();
+        
+        // Remove "r." prefix if present
+        if (version.StartsWith("r."))
+        {
+            version = version.Substring(2);
+        }
+        
+        // Remove "_s" suffix if present
+        if (version.EndsWith("_s"))
+        {
+            version = version.Substring(0, version.Length - 2);
+        }
+        
+        // Remove other common suffixes like "_beta", "_alpha", etc.
+        var suffixes = new[] { "_beta", "_alpha", "_dev", "_test", "_rc", "_pre" };
+        foreach (var suffix in suffixes)
+        {
+            if (version.EndsWith(suffix))
+            {
+                version = version.Substring(0, version.Length - suffix.Length);
+                break;
+            }
+        }
+        
+        // Validate that it looks like a version number (contains dots and numbers)
+        if (version.Contains('.') && version.Any(char.IsDigit))
+        {
+            return version;
+        }
+        
+        // If no valid version found, return the original string
+        context.Log.Warning($"Could not extract valid version from: {rawVersion}");
+        return rawVersion;
+    }
+
+    private async Task UpdateVersionEntry(BuildContext context, string gameVersion)
+    {
+        var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{context.TargetVersion.BuildId}.json");
+        
+        if (!File.Exists(versionFilePath.FullPath))
+        {
+            context.Log.Error($"Version file not found: {versionFilePath.FullPath}");
+            return;
+        }
+
+        // Read existing version entry
+        await using var versionStream = File.OpenRead(versionFilePath.FullPath);
+        var versionEntry = await JsonSerializer.DeserializeAsync<GameVersionEntry>(versionStream, new JsonSerializerOptions
+        {
+            Converters = { new ValidatingJsonConverter() }
+        });
+
+        if (versionEntry == null)
+        {
+            context.Log.Error("Failed to deserialize version entry");
+            return;
+        }
+
+        // Update game version
+        versionEntry.GameVersion = gameVersion;
+
+        // Write back to file
+        await using var writeStream = File.OpenWrite(versionFilePath.FullPath);
+        await JsonSerializer.SerializeAsync(writeStream, versionEntry, new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = true,
+        });
+
+        context.Log.Information($"Updated version entry with game version: {gameVersion}");
+    }
+
+    private async Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
+    {
+        var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{context.TargetVersion.BuildId}";
+        
+        // Create branch
+        context.GitCreateBranch(context.RootDirectory, branchName, true);
+        
+        // Add changes
+        context.GitAdd(context.RootDirectory, context.GameDirectory.CombineWithFilePath("versions"));
+        
+        // Commit changes
+        context.InferredGitCommit($"Update game version to {gameVersion} for build {context.TargetVersion.BuildId}");
+        
+        // Push branch
+        context.Command(
+            new CommandSettings
+            {
+                ToolName = "git",
+                ToolExecutableNames = new[] { "git", "git.exe" },
+            },
+            new ProcessArgumentBuilder()
+                .Append("push")
+                .Append("--set-upstream")
+                .Append("origin")
+                .Append(branchName)
+        );
+
+        // Create and merge PR
+        context.Command(
+            new CommandSettings
+            {
+                ToolName = "gh",
+                ToolExecutableNames = new[] { "gh", "gh.exe" },
+            },
+            new ProcessArgumentBuilder()
+                .Append("pr")
+                .Append("create")
+                .AppendSwitch("--title", $"\"[{context.GameDirectory.GetDirectoryName()}] Update game version to {gameVersion} - Build {context.TargetVersion.BuildId}\"")
+                .AppendSwitch(
+                    "--body", 
+                    $"\"Updated game version to {gameVersion} for {context.GameAppInfo.Name} build {context.TargetVersion.BuildId}.\n" + 
+                    $"Version was automatically extracted from version.txt file.\""
+                )
+                .AppendSwitch("--head", branchName)
+        );
+
+        // Auto-merge the PR
+        context.Log.Information("Auto-merging version update PR...");
+        context.Command(
+            new CommandSettings
+            {
+                ToolName = "gh",
+                ToolExecutableNames = new[] { "gh", "gh.exe" },
+            },
+            new ProcessArgumentBuilder()
+                .Append("pr")
+                .Append("merge")
+                .Append(branchName)
+                .Append("--merge")
+                .Append("--delete-branch")
+        );
+
+        context.Log.Information("Version update PR created and merged automatically.");
+    }
+
+    public override async Task RunAsync(BuildContext context)
+    {
+        var gameVersion = await ReadVersionFromFile(context);
+        
+        if (string.IsNullOrEmpty(gameVersion))
+        {
+            context.Log.Warning("No version found, skipping update");
+            return;
+        }
+
+        await UpdateVersionEntry(context, gameVersion);
+        await CreateAndMergeVersionUpdatePR(context, gameVersion);
     }
 }
 

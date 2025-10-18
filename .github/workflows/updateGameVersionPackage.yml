@@ -50,7 +50,11 @@ jobs:
           steam_config_vdf: ${{ secrets.steam_config_vdf }}
           steam_username: ${{ secrets.steam_username }}
       
-      - name: Build
+      - name: Update version with actual game version and auto-merge
+        run: |
+          ./build.sh --target UpdateVersionFromDownload --game ${{ inputs.game }} --build ${{ inputs.buildId }} --steam-username ${{ secrets.steam_username }}
+      
+      - name: Build and push NuGet packages
         run: |
           ./build.sh --target PushNuGetPackages --game ${{ inputs.game }} --build ${{ inputs.buildId }} --steam-username ${{ secrets.steam_username }} --nuget-api-key ${{ secrets.nuget_api_key }}
 
