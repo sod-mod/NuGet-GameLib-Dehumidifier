@@ -430,66 +430,25 @@ public sealed class ListDeployedPackageVersionsTask : NuGetTaskBase
     }
 }
 
-[TaskName("CheckPackageVersionsUpToDate")]
+[TaskName("CheckPackageBuildIdUpToDate")]
 [IsDependentOn(typeof(HandleUnknownSteamBuildTask))]
 [IsDependentOn(typeof(ListDeployedPackageVersionsTask))]
-public sealed class CheckPackageVersionsUpToDateTask : AsyncFrostingTaskBase<BuildContext>
+public sealed class CheckPackageBuildIdUpToDateTask : AsyncFrostingTaskBase<BuildContext>
 {
-    private bool VersionOutdated(BuildContext context, GameVersionEntry versionEntry)
-    {
-        // If GameVersion is empty, it's always outdated
-        if (string.IsNullOrEmpty(versionEntry.GameVersion))
-        {
-            return true;
-        }
-
-        var nugetPackageMetadatasForEntry = context.GameMetadata.NuGetPackageNames
-            .Select(name => context.DeployedPackageMetadata[name]);
-
-        return nugetPackageMetadatasForEntry.Any(
-            versionList => !HasDeployFromThisDehumidiferVersion(versionList.Where(IsDeployedForEntry))
-        );
-
-        bool IsDeployedForEntry(IPackageSearchMetadata packageVersion)
-        {
-            return packageVersion.Identity.Version.ToString().StartsWith(versionEntry.GameVersion);
-        }
-
-        bool HasDeployFromThisDehumidiferVersion(IEnumerable<IPackageSearchMetadata> packageVersions)
-        {
-            try
-            {
-                var latest = packageVersions
-                    .OrderByDescending(version => version.Published)
-                    .First();
-                return latest.Published >= context.Versioner.LastVersionChangeWhen;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
-        }
-    }
-
-    private IEnumerable<GameVersionEntry> GetOutdatedVersions(BuildContext context)
-    {
-        return context.GameVersions.Values
-            .Where(version => VersionOutdated(context, version));
-    }
 
     public override async Task RunAsync(BuildContext context)
     {
-        context.Log.Information($"Total game versions: {context.GameVersions.Values.Count()}");
+        // Get current build ID from Steam app info
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        context.Log.Information($"Current build ID: {currentBuildId}");
         
-        var outdatedVersions = GetOutdatedVersions(context).ToList();
-        context.Log.Information($"Outdated versions count: {outdatedVersions.Count}");
+        // Check if this build ID is already processed (has version.json file)
+        var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{currentBuildId}.json");
+        var isAlreadyProcessed = File.Exists(versionFilePath.FullPath);
         
-        foreach (var version in outdatedVersions)
-        {
-            context.Log.Information($"Outdated version: BuildId={version.BuildId}, GameVersion='{version.GameVersion}'");
-        }
+        context.Log.Information($"Version file exists: {isAlreadyProcessed}");
         
-        var outdatedBuildIds = outdatedVersions.Select(version => version.BuildId);
+        var outdatedBuildIds = isAlreadyProcessed ? new List<long>() : new List<long> { currentBuildId };
         var outdatedBuildIdsJson = JsonSerializer.Serialize(outdatedBuildIds);
 
         var githubOutputFile = Environment.GetEnvironmentVariable("GITHUB_OUTPUT", EnvironmentVariableTarget.Process);
@@ -1033,7 +992,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         context.Log.Information($"Updated version entry with game version: {gameVersion}");
     }
 
-    private async Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
+    private Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
     {
         var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{context.TargetVersion.BuildId}";
 
@@ -1096,6 +1055,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         );
 
         context.Log.Information("Version update PR created and merged automatically.");
+        return Task.CompletedTask;
     }
 
     public override async Task RunAsync(BuildContext context)
