@@ -1065,7 +1065,8 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
     {
         // Get current build ID from Steam app info instead of using TargetVersion
         var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
-        var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{currentBuildId}";
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{currentBuildId}-{timestamp}";
 
         // Create branch
         context.GitCreateBranch(context.RootDirectory, branchName, true);
