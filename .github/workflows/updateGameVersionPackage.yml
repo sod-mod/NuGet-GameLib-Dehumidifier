@@ -50,6 +50,11 @@ jobs:
         with:
           steam_config_vdf: ${{ secrets.steam_config_vdf }}
           steam_username: ${{ secrets.steam_username }}
+
+      - name: Configure Git
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
       
       - name: Update version with actual game version and auto-merge
         run: |
