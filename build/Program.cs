@@ -60,7 +60,6 @@ public class BuildContext : FrostingContext
 
     public DirectoryPath RootDirectory { get; }
     public DirectoryPath GameDirectory => RootDirectory.Combine("Games").Combine(GameFolderName);
-    public GameVersionEntry TargetVersion => GameVersions[GameBuildId ?? throw new Exception("Build ID not provided.")];
 
     public Versioner Versioner { get; }
 
@@ -519,8 +518,20 @@ public sealed class DownloadNuGetDependenciesTask : NuGetTaskBase
         _downloadResource = await SourceRepository.GetResourceAsync<DownloadResource>();
         _bepInDownloadResource = await BepInSourceRepository.GetResourceAsync<DownloadResource>();
 
+        // Get current build ID and find the corresponding version entry
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var currentVersionEntry = context.GameVersions.ContainsKey(currentBuildId) 
+            ? context.GameVersions[currentBuildId] 
+            : context.GameVersions.Latest();
+
+        if (currentVersionEntry == null)
+        {
+            context.Log.Error($"No version entry found for build {currentBuildId} and no latest version available");
+            return;
+        }
+
         var downloadResults = await Task.WhenAll(
-            context.TargetVersion.FrameworkTargets
+            currentVersionEntry.FrameworkTargets
                 .SelectMany(target => target.NuGetDependencies)
                 .Select(dependency => DownloadNuGetPackageVersion(context, dependency.ToPackageIdentity()))
         );
@@ -599,14 +610,26 @@ public sealed class CacheDependencyAssemblyNamesTask : AsyncFrostingTaskBase<Bui
 
     public override async Task RunAsync(BuildContext context)
     {
+        // Get current build ID and find the corresponding version entry
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var currentVersionEntry = context.GameVersions.ContainsKey(currentBuildId) 
+            ? context.GameVersions[currentBuildId] 
+            : context.GameVersions.Latest();
+
+        if (currentVersionEntry == null)
+        {
+            context.Log.Error($"No version entry found for build {currentBuildId} and no latest version available");
+            return;
+        }
+
         var perFrameworkDependencyAssemblies = await Task.WhenAll(
-            context.TargetVersion.FrameworkTargets
+            currentVersionEntry.FrameworkTargets
                 .Select(
                     async target => await DependencyAssemblyNamesForTfm(context, target, CancellationToken.None)
                 )
         );
 
-        context.FrameworkTargetDependencyAssemblyNames = context.TargetVersion.FrameworkTargets
+        context.FrameworkTargetDependencyAssemblyNames = currentVersionEntry.FrameworkTargets
             .Zip(perFrameworkDependencyAssemblies)
             .ToDictionary(
                 item => item.First.Framework,
@@ -760,9 +783,21 @@ public sealed class ProcessAssembliesTask : AsyncFrostingTaskBase<BuildContext>
             new DirectoryInfoWrapper(new DirectoryInfo(ManagedDirectory(context, depot.DepotId).FullPath))
         ).Files.ToArray();
 
+        // Get current build ID and find the corresponding version entry
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var currentVersionEntry = context.GameVersions.ContainsKey(currentBuildId) 
+            ? context.GameVersions[currentBuildId] 
+            : context.GameVersions.Latest();
+
+        if (currentVersionEntry == null)
+        {
+            context.Log.Error($"No version entry found for build {currentBuildId} and no latest version available");
+            return;
+        }
+
         Task CopyAssembliesForTarget(NuGetFramework tfm) => CopyAssembliesForDepotTarget(context, depot, tfm);
         await Task.WhenAll(
-            context.TargetVersion.FrameworkTargets
+            currentVersionEntry.FrameworkTargets
                 .Select(target => target.Framework)
                 .Select(CopyAssembliesForTarget)
         );
@@ -823,20 +858,32 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
 
     public async Task MakeDepotPackage(BuildContext context, SteamGameDistributionDepot depot)
     {
+        // Get current build ID and find the corresponding version entry
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var currentVersionEntry = context.GameVersions.ContainsKey(currentBuildId) 
+            ? context.GameVersions[currentBuildId] 
+            : context.GameVersions.Latest();
+
+        if (currentVersionEntry == null)
+        {
+            context.Log.Error($"No version entry found for build {currentBuildId} and no latest version available");
+            return;
+        }
+
         var id = $"{context.GameMetadata.NuGet.Name}{depot.PackageSuffix}";
         var allVersions = context.DeployedPackageMetadata
             .Values
             .SelectMany(packageVersions => packageVersions);
-        var nextRevision = NextRevisionNumber(allVersions, id, context.TargetVersion.GameVersion);
+        var nextRevision = NextRevisionNumber(allVersions, id, currentVersionEntry.GameVersion);
 
         ManifestMetadata metadata = new()
         {
             Id = id,
-            Version = new NuGetVersion($"{context.TargetVersion.GameVersion}-{BuildContext.DehumidifierVersionDiscriminatorPrefix}.{nextRevision}"),
+            Version = new NuGetVersion($"{currentVersionEntry.GameVersion}-{BuildContext.DehumidifierVersionDiscriminatorPrefix}.{nextRevision}"),
             Authors = context.GameMetadata.NuGet.Authors ?? ["lordfirespeed"],
             Description = context.GameMetadata.NuGet.Description
                           + "\n\nGenerated and managed by GameLib Dehumidifier.",
-            DependencyGroups = context.TargetVersion.FrameworkTargets.Select(
+            DependencyGroups = currentVersionEntry.FrameworkTargets.Select(
                 target => new PackageDependencyGroup(
                     NuGetFramework.Parse(target.TargetFrameworkMoniker),
                     target.NuGetDependencies.Select(dependency => new PackageDependency(
@@ -972,7 +1019,9 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
 
     private async Task UpdateVersionEntry(BuildContext context, string gameVersion)
     {
-        var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{context.TargetVersion.BuildId}.json");
+        // Get current build ID from Steam app info instead of using TargetVersion
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var versionFilePath = context.GameDirectory.Combine("versions").CombineWithFilePath($"{currentBuildId}.json");
 
         if (!File.Exists(versionFilePath.FullPath))
         {
@@ -1009,7 +1058,9 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
 
     private Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
     {
-        var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{context.TargetVersion.BuildId}";
+        // Get current build ID from Steam app info instead of using TargetVersion
+        var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
+        var branchName = $"{context.GameDirectory.GetDirectoryName()}-version-update-{currentBuildId}";
 
         // Create branch
         context.GitCreateBranch(context.RootDirectory, branchName, true);
@@ -1018,7 +1069,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         context.GitAdd(context.RootDirectory, context.GameDirectory.CombineWithFilePath("versions"));
 
         // Commit changes
-        context.InferredGitCommit($"Update game version to {gameVersion} for build {context.TargetVersion.BuildId}");
+        context.InferredGitCommit($"Update game version to {gameVersion} for build {currentBuildId}");
 
         // Push branch
         context.Command(
@@ -1044,10 +1095,10 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
             new ProcessArgumentBuilder()
                 .Append("pr")
                 .Append("create")
-                .AppendSwitch("--title", $"\"[{context.GameDirectory.GetDirectoryName()}] Update game version to {gameVersion} - Build {context.TargetVersion.BuildId}\"")
+                .AppendSwitch("--title", $"\"[{context.GameDirectory.GetDirectoryName()}] Update game version to {gameVersion} - Build {currentBuildId}\"")
                 .AppendSwitch(
                     "--body",
-                    $"\"Updated game version to {gameVersion} for {context.GameAppInfo.Name} build {context.TargetVersion.BuildId}.\n" +
+                    $"\"Updated game version to {gameVersion} for {context.GameAppInfo.Name} build {currentBuildId}.\n" +
                     $"Version was automatically extracted from version.txt file.\""
                 )
                 .AppendSwitch("--head", branchName)
