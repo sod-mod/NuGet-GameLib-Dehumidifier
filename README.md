@@ -1,3 +1,9 @@
+# ShapeOfDreams.GameLibs
+
+A repository that checks Steam updates daily, downloads game DLLs, strips/publicizes them, and uploads them to NuGet packages.
+
+It's a fork of NuGet GameLib Dehumidifier.
+
 # NuGet GameLib Dehumidifer
 
 An automated utility that maintains 'GameLibs' packages for Steam games.

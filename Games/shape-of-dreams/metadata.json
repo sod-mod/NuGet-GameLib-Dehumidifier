@@ -20,7 +20,8 @@
       "Assembly-CSharp.dll",
       "Dew.Core.dll",
       "Dew.Contents.dll",
-      "Dew.External.dll"
+      "Dew.External.dll",
+      "Dew.UI.dll"
     ],
     "isIL2Cpp": false
   },

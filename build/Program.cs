@@ -51,7 +51,7 @@ public static class Program
 
 public class BuildContext : FrostingContext
 {
-    public const string DehumidifierVersionDiscriminatorPrefix = "ngd";
+   public const string DehumidifierVersionDiscriminatorPrefix = "ngd";
 
     public string GameFolderName { get; }
     public int? GameBuildId { get; }
@@ -880,7 +880,7 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
         {
             Id = id,
             Version = new NuGetVersion($"{currentVersionEntry.GameVersion}-{BuildContext.DehumidifierVersionDiscriminatorPrefix}.{nextRevision}"),
-            Authors = context.GameMetadata.NuGet.Authors ?? ["lordfirespeed"],
+            Authors = context.GameMetadata.NuGet.Authors ?? ["sod-mod"],
             Description = context.GameMetadata.NuGet.Description
                           + "\n\nGenerated and managed by GameLib Dehumidifier.",
             DependencyGroups = currentVersionEntry.FrameworkTargets.Select(
@@ -894,7 +894,7 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
             )
         };
 
-        metadata.SetProjectUrl("https://github.com/Lordfirespeed/NuGet-GameLib-Dehumidifier");
+        metadata.SetProjectUrl("https://https://github.com/sod-mod/ShapeOfDreams.GameLibs");
 
         ManifestFile[] files = [
             new()
