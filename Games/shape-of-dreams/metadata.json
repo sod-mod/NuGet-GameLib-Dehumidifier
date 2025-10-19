@@ -12,8 +12,8 @@
   "processSettings": {
     "excludeAssemblies": [
       "Mono*.dll",
-      "netstandard.dll",
       "System*.dll",
+      "netstandard.dll",
       "mscorlib.dll"
     ],
     "assembliesToPublicise": [
@@ -21,7 +21,8 @@
       "Dew.Core.dll",
       "Dew.Contents.dll",
       "Dew.External.dll",
-      "Dew.UI.dll"
+      "Dew.UI.dll",
+      "Sirenix*.dll"
     ],
     "isIL2Cpp": false
   },
