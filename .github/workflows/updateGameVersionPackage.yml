@@ -30,6 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           filter: tree:0
+          ref: main
         
       - name: Setup .NET
         uses: actions/setup-dotnet@v3

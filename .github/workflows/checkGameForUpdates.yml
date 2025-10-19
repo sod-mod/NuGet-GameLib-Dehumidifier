@@ -62,65 +62,8 @@ jobs:
           echo "buildIds is empty string: ${{ steps.check-versions.outputs.outdated-version-buildIds == '' }}"
           echo "buildIds contains data: ${{ steps.check-versions.outputs.outdated-version-buildIds != '[]' && steps.check-versions.outputs.outdated-version-buildIds != '' }}"
   
-  wait-for-pr-merge:
-    needs: game-update-check
-    if: ${{ needs.game-update-check.outputs.buildIds != '[]' && needs.game-update-check.outputs.buildIds != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Wait for PR merge completion
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Waiting for PR merge to complete..."
-          
-          # Wait for a short period to allow PR merge to complete
-          sleep 30
-          
-          # Check if there are any open PRs for this game
-          buildIds='${{ needs.game-update-check.outputs.buildIds }}'
-          for buildId in $(echo $buildIds | jq -r '.[]'); do
-            echo "Checking for open PRs for build $buildId..."
-            
-            # Look for open PRs with titles containing the build ID
-            prs=$(gh pr list --state open --search "build $buildId" --json number,title,state)
-            
-            if [ "$prs" != "[]" ]; then
-              echo "Found open PRs for build $buildId, waiting for merge..."
-              
-              # Wait for PRs to be merged (check every 30 seconds for up to 10 minutes)
-              max_attempts=20
-              attempt=0
-              
-              while [ $attempt -lt $max_attempts ]; do
-                prs=$(gh pr list --state open --search "build $buildId" --json number,title,state)
-                if [ "$prs" = "[]" ]; then
-                  echo "All PRs for build $buildId have been merged or closed"
-                  break
-                fi
-                
-                echo "PRs still open for build $buildId, waiting... (attempt $((attempt + 1))/$max_attempts)"
-                sleep 30
-                attempt=$((attempt + 1))
-              done
-              
-              if [ $attempt -eq $max_attempts ]; then
-                echo "Timeout waiting for PR merge for build $buildId"
-                exit 1
-              fi
-            else
-              echo "No open PRs found for build $buildId"
-            fi
-          done
-          
-          echo "PR merge wait completed"
-
   dispatch-game-version-package-updates:
-    needs: [game-update-check, wait-for-pr-merge]
+    needs: game-update-check
     if: ${{ needs.game-update-check.outputs.buildIds != '[]' && needs.game-update-check.outputs.buildIds != '' }}
     strategy:
       matrix:
