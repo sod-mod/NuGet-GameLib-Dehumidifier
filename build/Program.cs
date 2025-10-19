@@ -1017,7 +1017,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         return rawVersion;
     }
 
-    private async Task UpdateVersionEntry(BuildContext context, string gameVersion)
+    private async Task<bool> UpdateVersionEntry(BuildContext context, string gameVersion)
     {
         // Get current build ID from Steam app info instead of using TargetVersion
         var currentBuildId = context.GameAppInfo.Branches["public"].BuildId;
@@ -1025,8 +1025,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
 
         if (!File.Exists(versionFilePath.FullPath))
         {
-            context.Log.Error($"Version file not found: {versionFilePath.FullPath}");
-            return;
+            throw new FileNotFoundException($"Version file not found: {versionFilePath.FullPath}");
         }
 
         // Read existing version entry
@@ -1041,8 +1040,14 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
 
         if (versionEntry == null)
         {
-            context.Log.Error("Failed to deserialize version entry");
-            return;
+            throw new InvalidOperationException("Failed to deserialize version entry");
+        }
+
+        // Check if game version is already the same
+        if (versionEntry.GameVersion == gameVersion)
+        {
+            context.Log.Information($"Game version is already {gameVersion}, no update needed");
+            return false;
         }
 
         // Update game version
@@ -1059,6 +1064,7 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         }
 
         context.Log.Information($"Updated version entry with game version: {gameVersion}");
+        return true;
     }
 
     private Task CreateAndMergeVersionUpdatePR(BuildContext context, string gameVersion)
@@ -1140,8 +1146,22 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
             return;
         }
 
-        await UpdateVersionEntry(context, gameVersion);
-        await CreateAndMergeVersionUpdatePR(context, gameVersion);
+        try
+        {
+            var wasUpdated = await UpdateVersionEntry(context, gameVersion);
+            if (!wasUpdated)
+            {
+                context.Log.Information("No version update needed, skipping PR creation");
+                return;
+            }
+
+            await CreateAndMergeVersionUpdatePR(context, gameVersion);
+        }
+        catch (Exception ex)
+        {
+            context.Log.Error($"Failed to update version entry: {ex.Message}");
+            throw;
+        }
     }
 }
 
