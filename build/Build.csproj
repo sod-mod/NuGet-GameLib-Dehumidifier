@@ -5,6 +5,7 @@
     <RunWorkingDirectory>$(MSBuildProjectDirectory)</RunWorkingDirectory>
     <LangVersion>12</LangVersion>
     <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);MSB3246</NoWarn>
   </PropertyGroup>
   
   <ItemGroup>
