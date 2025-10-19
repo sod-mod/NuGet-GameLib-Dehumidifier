@@ -57,6 +57,8 @@ jobs:
           git config user.name "GitHub Action"
       
       - name: Update version with actual game version and auto-merge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./build.sh --target UpdateVersionFromDownload --game ${{ inputs.game }} --build ${{ inputs.buildId }} --steam-username ${{ secrets.steam_username }}
       
