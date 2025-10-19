@@ -894,13 +894,18 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
             )
         };
 
-        metadata.SetProjectUrl("https://https://github.com/sod-mod/ShapeOfDreams.GameLibs");
+        metadata.SetProjectUrl("https://github.com/sod-mod/ShapeOfDreams.GameLibs");
 
         ManifestFile[] files = [
             new()
             {
                 Source = "ref/**",
                 Target = "ref"
+            },
+            new()
+            {
+                Source = "README.md",
+                Target = "README.md"
             }
         ];
 
