@@ -1030,11 +1030,14 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         }
 
         // Read existing version entry
-        await using var versionStream = File.OpenRead(versionFilePath.FullPath);
-        var versionEntry = await JsonSerializer.DeserializeAsync<GameVersionEntry>(versionStream, new JsonSerializerOptions
+        GameVersionEntry versionEntry;
+        using (var versionStream = File.OpenRead(versionFilePath.FullPath))
         {
-            Converters = { new ValidatingJsonConverter() }
-        });
+            versionEntry = await JsonSerializer.DeserializeAsync<GameVersionEntry>(versionStream, new JsonSerializerOptions
+            {
+                Converters = { new ValidatingJsonConverter() }
+            });
+        }
 
         if (versionEntry == null)
         {
@@ -1046,12 +1049,14 @@ public sealed class UpdateVersionFromDownloadTask : AsyncFrostingTaskBase<BuildC
         versionEntry.GameVersion = gameVersion;
 
         // Write back to file
-        await using var writeStream = File.OpenWrite(versionFilePath.FullPath);
-        await JsonSerializer.SerializeAsync(writeStream, versionEntry, new JsonSerializerOptions
+        using (var writeStream = File.OpenWrite(versionFilePath.FullPath))
         {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            WriteIndented = true,
-        });
+            await JsonSerializer.SerializeAsync(writeStream, versionEntry, new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                WriteIndented = true,
+            });
+        }
 
         context.Log.Information($"Updated version entry with game version: {gameVersion}");
     }
