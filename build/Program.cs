@@ -896,6 +896,11 @@ public sealed class MakePackagesTask : AsyncFrostingTaskBase<BuildContext>
 
         metadata.SetProjectUrl("https://github.com/sod-mod/ShapeOfDreams.GameLibs");
 
+        // Generate README.md dynamically from metadata.Description
+        var readmeContent = metadata.Description;
+        var readmePath = Path.Combine(DepotNupkgSourceDirectoryPath(context, depot).FullPath, "README.md");
+        await File.WriteAllTextAsync(readmePath, readmeContent);
+
         ManifestFile[] files = [
             new()
             {
