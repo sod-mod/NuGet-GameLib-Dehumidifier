@@ -454,6 +454,7 @@ public sealed class CheckPackageBuildIdUpToDateTask : AsyncFrostingTaskBase<Buil
         {
             var files = Directory.GetFiles(versionsDir.FullPath, "*.json");
             context.Log.Information($"Files in versions directory: {string.Join(", ", files)}");
+            return;
         }
         else
         {
